@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Fido's Flame — Animal Testing Facility Map</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  :root{ --bg:#10131a; --panel:#171b24; --line:#262c39; --txt:#e7ecf3; --muted:#93a0b4;
+         --accent:#ff7a45; --danger:#ef4444; --ok:#22c55e; }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;font-family:system-ui,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--txt)}
+  #app{display:flex;height:100vh}
+  #side{width:380px;min-width:380px;background:var(--panel);border-right:1px solid var(--line);
+        display:flex;flex-direction:column;overflow:hidden}
+  #map{flex:1}
+  header{padding:14px 16px;border-bottom:1px solid var(--line)}
+  header h1{margin:0;font-size:17px;letter-spacing:.2px}
+  header h1 span{color:var(--accent)}
+  header p{margin:4px 0 0;font-size:12px;color:var(--muted)}
+  .stats{display:flex;gap:8px;padding:10px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .stat{background:#11151d;border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12px}
+  .stat b{display:block;font-size:16px}
+  .controls{padding:12px 16px;border-bottom:1px solid var(--line)}
+  .controls label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+  input,select{width:100%;margin-top:4px;padding:8px 10px;background:#0c0f15;color:var(--txt);
+        border:1px solid var(--line);border-radius:8px;font-size:13px}
+  .row{display:flex;gap:8px;margin-top:8px}
+  .row>*{flex:1}
+  button{background:var(--accent);color:#1a1206;border:0;border-radius:8px;padding:9px;font-weight:600;cursor:pointer;font-size:13px}
+  button.ghost{background:#0c0f15;color:var(--txt);border:1px solid var(--line)}
+  #list{overflow:auto;flex:1}
+  .item{padding:11px 16px;border-bottom:1px solid var(--line);cursor:pointer}
+  .item:hover{background:#1c2230}
+  .item h3{margin:0 0 3px;font-size:13.5px}
+  .item .meta{font-size:11.5px;color:var(--muted)}
+  .badge{display:inline-block;font-size:10px;padding:1px 6px;border-radius:20px;margin-right:4px;border:1px solid var(--line)}
+  .b-viol{color:#fecaca;border-color:#7f1d1d;background:#2a0f0f}
+  .b-dist{color:#fde68a;border-color:#78600f;background:#241f08}
+  .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:middle}
+  .leaflet-popup-content{font-size:13px;line-height:1.45;margin:12px 14px;
+        overflow-wrap:break-word;word-break:break-word}
+  /* Cap popup height so dense records scroll inside the bubble instead of
+     running off-screen (which forced zooming the map way out to read them). */
+  .leaflet-popup-content{max-height:min(65vh,440px);overflow-y:auto;overflow-x:hidden;
+        overscroll-behavior:contain}
+  /* Leaflet's own scroll container (added when the maxHeight option kicks in) */
+  .leaflet-popup-scrolled{max-height:min(65vh,440px);overflow-y:auto;overflow-x:hidden;
+        border-bottom:none;overscroll-behavior:contain}
+  /* Slim, themed scrollbar so the scroll affordance is visible */
+  .leaflet-popup-content::-webkit-scrollbar,
+  .leaflet-popup-scrolled::-webkit-scrollbar{width:9px}
+  .leaflet-popup-content::-webkit-scrollbar-thumb,
+  .leaflet-popup-scrolled::-webkit-scrollbar-thumb{background:#b8bfcc;border-radius:8px;
+        border:2px solid transparent;background-clip:content-box}
+  .leaflet-popup-content:hover::-webkit-scrollbar-thumb,
+  .leaflet-popup-scrolled:hover::-webkit-scrollbar-thumb{background:#8b93a3;background-clip:content-box}
+  .leaflet-popup-content::-webkit-scrollbar-track,
+  .leaflet-popup-scrolled::-webkit-scrollbar-track{background:transparent}
+  .pop h3{margin:0 0 4px;font-size:15px}
+  .pop .k{color:#555;font-weight:600}
+  .pop a{color:#b45309;word-break:break-all}
+  .legend{position:absolute;z-index:600;bottom:18px;right:12px;background:rgba(20,24,32,.92);
+        border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:11.5px}
+  .empty{padding:24px 16px;color:var(--muted);font-size:13px}
+  .note{font-size:11px;color:var(--muted);padding:8px 16px}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="side">
+    <header>
+      <h1><span>🔥 Fido's Flame</span> — Animal Testing Facilities</h1>
+      <p>Nationwide rollout, state by state · public-records OSINT for real-estate proximity screening</p>
+    </header>
+    <div class="stats" id="stats"></div>
+    <div class="controls">
+      <label>Check an address (find facilities nearby)</label>
+      <input id="addr" placeholder="e.g. 1 Main St, Davis, CA" />
+      <div class="row">
+        <select id="radius">
+          <option value="1">within 1 mi</option>
+          <option value="3" selected>within 3 mi</option>
+          <option value="5">within 5 mi</option>
+          <option value="10">within 10 mi</option>
+          <option value="25">within 25 mi</option>
+        </select>
+        <button id="go">Search</button>
+      </div>
+      <div class="row">
+        <select id="ftype"><option value="">All facility types</option></select>
+        <select id="fviol">
+          <option value="">All records</option>
+          <option value="viol">Only with violations</option>
+        </select>
+      </div>
+      <div class="row"><button class="ghost" id="reset">Reset view</button></div>
+    </div>
+    <div id="list"></div>
+    <div class="note">Locations are facility/organization addresses from public records (USDA APHIS, NIH).
+      Geocoding may be approximate. Not all labs report all species (mice/rats/birds are AWA-exempt).</div>
+  </div>
+  <div id="map"></div>
+  <div class="legend" id="legend"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="facilities_data.js"></script>
+<script>
+const TYPE_COLORS = {
+  academic:"#60a5fa", college:"#38bdf8", pharma:"#f472b6", biotech:"#c084fc",
+  CRO:"#fb923c", government:"#a3e635", hospital:"#2dd4bf", VA:"#14b8a6",
+  "zoo-aquarium":"#facc15", other:"#94a3b8"
+};
+const colorFor = t => TYPE_COLORS[(t||"other")] || TYPE_COLORS.other;
+const esc = s => (s==null?"":String(s)).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+function miles(a,b,c,d){const R=3958.8,r=Math.PI/180;const dLat=(c-a)*r,dLon=(d-b)*r;
+  const x=Math.sin(dLat/2)**2+Math.cos(a*r)*Math.cos(c*r)*Math.sin(dLon/2)**2;
+  return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));}
+
+const GJ = window.FACILITIES_GEOJSON;
+const map = L.map('map').setView([37.3,-119.6], 6);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+  {attribution:'© OpenStreetMap, © CARTO', subdomains:'abcd', maxZoom:19}).addTo(map);
+
+let markers=[], pin=null, ring=null, originLL=null;
+function init(){
+  const feats=GJ.features;
+  // populate type filter
+  const types=[...new Set(feats.map(f=>f.properties.facility_type).filter(Boolean))].sort();
+  const sel=document.getElementById('ftype');
+  types.forEach(t=>{const o=document.createElement('option');o.value=t;o.textContent=t;sel.appendChild(o);});
+  // stats
+  const viol=feats.filter(f=>(f.properties.violations||[]).length).length;
+  const fund=feats.reduce((s,f)=>s+(+f.properties.funding_federal_usd||0),0);
+  document.getElementById('stats').innerHTML=
+    `<div class="stat"><b>${feats.length}</b>facilities</div>
+     <div class="stat"><b>${viol}</b>with violations</div>
+     <div class="stat"><b>$${(fund/1e9).toFixed(1)}B</b>fed funding</div>`;
+  // legend
+  document.getElementById('legend').innerHTML='<b>Facility type</b><br>'+
+    Object.entries(TYPE_COLORS).map(([k,v])=>`<span class="dot" style="background:${v}"></span>${k}`).join('<br>');
+  draw(feats); render(feats);
+  document.getElementById('go').onclick=search;
+  document.getElementById('addr').addEventListener('keydown',e=>{if(e.key==='Enter')search();});
+  document.getElementById('ftype').onchange=applyFilters;
+  document.getElementById('fviol').onchange=applyFilters;
+  document.getElementById('reset').onclick=()=>{map.setView([37.3,-119.6],6);if(pin){map.removeLayer(pin);pin=null;}
+    if(ring){map.removeLayer(ring);ring=null;}originLL=null;document.getElementById('addr').value='';applyFilters();};
+}
+function draw(feats){
+  markers.forEach(m=>map.removeLayer(m)); markers=[];
+  feats.forEach(f=>{
+    const p=f.properties, [lon,lat]=f.geometry.coordinates;
+    const hasV=(p.violations||[]).length>0;
+    const m=L.circleMarker([lat,lon],{radius:7,color:hasV?'#ef4444':'#0b0e13',weight:hasV?2:1,
+      fillColor:colorFor(p.facility_type),fillOpacity:.9});
+    m.bindPopup(popup(p),{maxWidth:340,maxHeight:440,autoPanPadding:[24,24]}); m._f=f; m.addTo(map); markers.push(m);
+  });
+}
+function usd(n){ n=+n; if(!n||isNaN(n))return '—'; const a=Math.abs(n);
+  if(a>=1e9)return '$'+(n/1e9).toFixed(1).replace(/\.0$/,'')+'B';
+  if(a>=1e6)return '$'+(n/1e6).toFixed(1).replace(/\.0$/,'')+'M';
+  if(a>=1e3)return '$'+Math.round(n/1e3)+'K'; return '$'+n.toLocaleString(); }
+function trunc(s,n){ s=String(s||''); return s.length>n?s.slice(0,n-1)+'…':s; }
+function orgIntelHtml(p){
+  const oi=p.org_intel; if(!oi)return '';
+  const lead=oi.org_leadership||{}, rec=oi.institutional_recognition||{},
+        corp=oi.corporate_structure_and_deals||{}, reg=oi.regulatory_oversight||{},
+        ver=p.org_intel_verification||{};
+  const own=[lead.ownership_type,corp.ticker].filter(Boolean).map(esc).join(' · ');
+  const parent=corp.ultimate_parent||corp.parent||'';
+  const money=[];
+  if(rec.market_cap_or_venture_raised_usd)money.push('mkt cap/raised '+usd(rec.market_cap_or_venture_raised_usd));
+  if(rec.endowment_or_annual_revenue_usd)money.push('endow./rev. '+usd(rec.endowment_or_annual_revenue_usd));
+  if(rec.total_funding_picture_usd)money.push('funding '+usd(rec.total_funding_picture_usd));
+  const officers=(lead.top_officers||[]).slice(0,3).map(o=>esc((o.title||'')+': '+(o.name||''))).join('<br>');
+  const accred=(rec.accreditations||[]).slice(0,3).map(a=>esc(String(a).split(' - ')[0].split(' (')[0])).join(' · ');
+  const deals=(corp.deals||[]), dtot=deals.reduce((s,d)=>s+(+d.value_usd||0),0);
+  const drows=deals.slice(0,3).map(d=>'• '+esc(d.date||'')+' '+esc(d.type||'')+(d.counterparty?' · '+esc(d.counterparty):'')+(d.value_usd?' · '+usd(d.value_usd):'')).join('<br>');
+  const nfab=(ver.fabrication_flags||[]).length;
+  let h='<div style="margin-top:6px;padding-top:5px;border-top:1px solid #e5e7eb">'+
+    '<div style="font-weight:600;margin-bottom:2px">💰 Money &amp; Oversight</div>';
+  if(own)h+='<div><span class="k">Ownership:</span> '+own+'</div>';
+  if(parent)h+='<div><span class="k">Ultimate parent:</span> '+esc(parent)+'</div>';
+  if(money.length)h+='<div><span class="k">Money:</span> '+esc(money.join(' · '))+'</div>';
+  if(officers)h+='<div><span class="k">Leadership:</span><br>'+officers+'</div>';
+  if(accred)h+='<div><span class="k">Accreditation:</span> '+accred+'</div>';
+  if(reg.oversight_notes)h+='<div><span class="k">Oversight:</span> '+esc(trunc(reg.oversight_notes,200))+'</div>';
+  if(deals.length)h+='<div style="margin-top:3px"><span class="k">Deals ('+deals.length+(dtot?', '+usd(dtot)+' disclosed':'')+'):</span><br>'+drows+'</div>';
+  h+='<div style="margin-top:3px;color:#6b7280;font-size:11px">org-intel confidence: '+esc(oi.block_confidence||ver.confidence||'?')+(nfab?' · '+nfab+' data flag(s)':'')+'</div>';
+  return h+'</div>';
+}
+function popup(p){
+  const v=(p.violations||[]);
+  const fund=p.funding_federal_usd?('$'+(+p.funding_federal_usd).toLocaleString()):'—';
+  return `<div class="pop"><h3>${esc(p.name)}</h3>
+    <div><span class="k">Type:</span> ${esc(p.facility_type||'?')} ${p.parent_company?('· '+esc(p.parent_company)):''}</div>
+    <div><span class="k">Address:</span> ${esc(p.physical_address||'?')}</div>
+    ${p.species_used?`<div><span class="k">Species:</span> ${esc((p.species_used||[]).join(', '))}</div>`:''}
+    ${p.testing_methods?`<div><span class="k">Methods:</span> ${esc(p.testing_methods)}</div>`:''}
+    <div><span class="k">Federal funding:</span> ${fund}</div>
+    ${(p.corporate_partners||[]).length?`<div><span class="k">Partners:</span> ${esc((p.corporate_partners||[]).join(', '))}</div>`:''}
+    <div><span class="k">USDA:</span> ${esc(p.reg||'')} · conf: ${esc(p.confidence||'?')}</div>
+    ${v.length?`<div style="margin-top:5px"><span class="k" style="color:#b91c1c">Violations (${v.length}):</span><br>`+
+      v.slice(0,4).map(x=>`• ${esc(x.date||'')} ${esc(x.description||'')}`).join('<br>')+`</div>`:''}
+    ${p.inspection_history?`<div style="margin-top:4px"><span class="k">Inspections:</span> ${esc(p.inspection_history)}</div>`:''}
+    ${orgIntelHtml(p)}
+    ${(p.sources||[]).length?`<div style="margin-top:5px"><a href="${esc(p.sources[0])}" target="_blank">source ↗</a></div>`:''}
+    </div>`;
+}
+function currentFilter(){
+  const t=document.getElementById('ftype').value, vo=document.getElementById('fviol').value;
+  return GJ.features.filter(f=>{
+    if(t && f.properties.facility_type!==t) return false;
+    if(vo==='viol' && !(f.properties.violations||[]).length) return false;
+    return true;
+  });
+}
+function applyFilters(){ let feats=currentFilter();
+  if(originLL){const r=+document.getElementById('radius').value;
+    feats=feats.filter(f=>miles(originLL[0],originLL[1],f.geometry.coordinates[1],f.geometry.coordinates[0])<=r);}
+  draw(feats); render(feats, !!originLL);
+}
+function render(feats, withDist){
+  const list=document.getElementById('list');
+  let arr=feats.map(f=>({f,d:originLL?miles(originLL[0],originLL[1],f.geometry.coordinates[1],f.geometry.coordinates[0]):null}));
+  if(withDist) arr.sort((a,b)=>a.d-b.d); else arr.sort((a,b)=>a.f.properties.name.localeCompare(b.f.properties.name));
+  if(!arr.length){list.innerHTML='<div class="empty">No facilities match.</div>';return;}
+  list.innerHTML=arr.map(({f,d})=>{const p=f.properties,hasV=(p.violations||[]).length;
+    return `<div class="item" data-reg="${esc(p.reg)}">
+      <h3><span class="dot" style="background:${colorFor(p.facility_type)}"></span>${esc(p.name)}</h3>
+      <div class="meta">${esc(p.city||'')} · ${esc(p.facility_type||'?')}
+        ${d!=null?`<span class="badge b-dist">${d.toFixed(1)} mi</span>`:''}
+        ${hasV?`<span class="badge b-viol">${hasV} viol</span>`:''}</div></div>`;}).join('');
+  [...list.querySelectorAll('.item')].forEach(el=>el.onclick=()=>{
+    const m=markers.find(mk=>mk._f.properties.reg===el.dataset.reg);
+    if(m){map.setView(m.getLatLng(),13);m.openPopup();}});
+}
+async function search(){
+  const q=document.getElementById('addr').value.trim(); if(!q)return;
+  const btn=document.getElementById('go'); btn.textContent='…';
+  try{
+    const r=await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q='+encodeURIComponent(q),
+      {headers:{'Accept':'application/json'}});
+    const d=await r.json();
+    if(!d.length){alert('Address not found. Try adding city + state.');return;}
+    originLL=[+d[0].lat,+d[0].lon];
+    if(pin)map.removeLayer(pin); if(ring)map.removeLayer(ring);
+    pin=L.marker(originLL).addTo(map).bindPopup('📍 '+esc(q)).openPopup();
+    const rad=+document.getElementById('radius').value;
+    ring=L.circle(originLL,{radius:rad*1609.34,color:'#ff7a45',weight:1,fillOpacity:.06}).addTo(map);
+    map.fitBounds(ring.getBounds(),{padding:[40,40]});
+    applyFilters();
+  }catch(e){alert('Lookup failed: '+e);}finally{btn.textContent='Search';}
+}
+document.getElementById('radius')&&document.getElementById('radius').addEventListener('change',()=>{if(originLL)search();});
+
+// Boot (after all declarations are initialized — avoids TDZ on markers/pin/etc.)
+if(!GJ || !GJ.features || !GJ.features.length){
+  document.getElementById('list').innerHTML =
+    '<div class="empty">No data loaded yet.<br><br>Run <code>python scripts/consolidate.py</code> after enrichment to generate <code>site/facilities_data.js</code>, then reload.</div>';
+}else{ init(); }
+</script>
+</body>
+</html>
