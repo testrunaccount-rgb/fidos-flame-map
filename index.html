@@ -3,264 +3,766 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Fido's Flame — Animal Testing Facility Map</title>
+<title>Fido's Flame — U.S. Animal Research Facility Registry</title>
+<meta name="description" content="A public-records registry and proximity screener of U.S. animal research and testing facilities: USDA registrants, federal funding, inspection and violation history." />
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <style>
-  :root{ --bg:#10131a; --panel:#171b24; --line:#262c39; --txt:#e7ecf3; --muted:#93a0b4;
-         --accent:#ff7a45; --danger:#ef4444; --ok:#22c55e; }
+  :root{
+    --bg:#0b0e14; --panel:#11151d; --panel2:#161b26; --line:#232a37; --line2:#2e3747;
+    --txt:#e8edf4; --muted:#8fa0b5; --muted2:#66788f;
+    --accent:#ff6d3d; --accent-soft:#3a2013; --amber:#fbbf24; --danger:#f05252;
+    --ok:#34d399; --chipbg:#0c1017;
+    --shadow:0 12px 40px rgba(0,0,0,.5);
+  }
+  [data-theme="light"]{
+    --bg:#f4f6f9; --panel:#ffffff; --panel2:#f1f4f8; --line:#dde3ec; --line2:#c9d2e0;
+    --txt:#17202e; --muted:#5b6b80; --muted2:#8593a6;
+    --accent:#e8501f; --accent-soft:#ffe4d8; --amber:#b45309; --danger:#dc2626;
+    --ok:#059669; --chipbg:#eef1f6;
+    --shadow:0 12px 40px rgba(30,40,60,.18);
+  }
   *{box-sizing:border-box}
-  html,body{margin:0;height:100%;font-family:system-ui,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--txt)}
-  #app{display:flex;height:100vh}
-  #side{width:380px;min-width:380px;background:var(--panel);border-right:1px solid var(--line);
-        display:flex;flex-direction:column;overflow:hidden}
-  #map{flex:1}
-  header{padding:14px 16px;border-bottom:1px solid var(--line)}
-  header h1{margin:0;font-size:17px;letter-spacing:.2px}
-  header h1 span{color:var(--accent)}
-  header p{margin:4px 0 0;font-size:12px;color:var(--muted)}
-  .stats{display:flex;gap:8px;padding:10px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
-  .stat{background:#11151d;border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12px}
-  .stat b{display:block;font-size:16px}
+  html,body{margin:0;height:100%}
+  body{font-family:system-ui,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);
+       color:var(--txt);font-size:14px;line-height:1.45;overflow:hidden}
+  button{font-family:inherit}
+  #app{display:grid;grid-template-columns:408px 1fr;height:100vh;height:100dvh}
+  #side{position:relative;background:var(--panel);border-right:1px solid var(--line);
+        display:flex;flex-direction:column;min-width:0;min-height:0;z-index:900}
+  #mapwrap{position:relative;min-width:0;min-height:0}
+  #map{position:absolute;inset:0;background:#0d1117}
+  [data-theme="light"] #map{background:#dce3ec}
+
+  /* ---------- header ---------- */
+  header{padding:14px 16px 10px;border-bottom:1px solid var(--line)}
+  .brandrow{display:flex;align-items:center;gap:10px}
+  .flame{font-size:22px;filter:drop-shadow(0 0 6px rgba(255,109,61,.55))}
+  .brand h1{margin:0;font-size:16px;font-weight:800;letter-spacing:.14em;text-transform:uppercase}
+  .brand h1 b{color:var(--accent)}
+  .brand p{margin:1px 0 0;font-size:11.5px;color:var(--muted)}
+  .hbtns{margin-left:auto;display:flex;gap:6px}
+  .icobtn{background:var(--chipbg);border:1px solid var(--line);color:var(--muted);border-radius:8px;
+          padding:5px 9px;font-size:11.5px;cursor:pointer;white-space:nowrap}
+  .icobtn:hover{color:var(--txt);border-color:var(--line2)}
+  .statgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:11px}
+  .stat{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:6px 8px}
+  .stat b{display:block;font-size:15.5px;font-variant-numeric:tabular-nums;letter-spacing:.01em}
+  .stat span{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+
+  /* ---------- search / controls ---------- */
   .controls{padding:12px 16px;border-bottom:1px solid var(--line)}
-  .controls label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
-  input,select{width:100%;margin-top:4px;padding:8px 10px;background:#0c0f15;color:var(--txt);
-        border:1px solid var(--line);border-radius:8px;font-size:13px}
-  .row{display:flex;gap:8px;margin-top:8px}
-  .row>*{flex:1}
-  button{background:var(--accent);color:#1a1206;border:0;border-radius:8px;padding:9px;font-weight:600;cursor:pointer;font-size:13px}
-  button.ghost{background:#0c0f15;color:var(--txt);border:1px solid var(--line)}
-  #list{overflow:auto;flex:1}
-  .item{padding:11px 16px;border-bottom:1px solid var(--line);cursor:pointer}
-  .item:hover{background:#1c2230}
-  .item h3{margin:0 0 3px;font-size:13.5px}
-  .item .meta{font-size:11.5px;color:var(--muted)}
-  .badge{display:inline-block;font-size:10px;padding:1px 6px;border-radius:20px;margin-right:4px;border:1px solid var(--line)}
-  .b-viol{color:#fecaca;border-color:#7f1d1d;background:#2a0f0f}
-  .b-dist{color:#fde68a;border-color:#78600f;background:#241f08}
-  .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:middle}
-  .leaflet-popup-content{font-size:13px;line-height:1.45;margin:12px 14px;
-        overflow-wrap:break-word;word-break:break-word}
-  /* Cap popup height so dense records scroll inside the bubble instead of
-     running off-screen (which forced zooming the map way out to read them). */
-  .leaflet-popup-content{max-height:min(65vh,440px);overflow-y:auto;overflow-x:hidden;
-        overscroll-behavior:contain}
-  /* Leaflet's own scroll container (added when the maxHeight option kicks in) */
-  .leaflet-popup-scrolled{max-height:min(65vh,440px);overflow-y:auto;overflow-x:hidden;
-        border-bottom:none;overscroll-behavior:contain}
-  /* Slim, themed scrollbar so the scroll affordance is visible */
-  .leaflet-popup-content::-webkit-scrollbar,
-  .leaflet-popup-scrolled::-webkit-scrollbar{width:9px}
-  .leaflet-popup-content::-webkit-scrollbar-thumb,
-  .leaflet-popup-scrolled::-webkit-scrollbar-thumb{background:#b8bfcc;border-radius:8px;
-        border:2px solid transparent;background-clip:content-box}
-  .leaflet-popup-content:hover::-webkit-scrollbar-thumb,
-  .leaflet-popup-scrolled:hover::-webkit-scrollbar-thumb{background:#8b93a3;background-clip:content-box}
-  .leaflet-popup-content::-webkit-scrollbar-track,
-  .leaflet-popup-scrolled::-webkit-scrollbar-track{background:transparent}
-  .pop h3{margin:0 0 4px;font-size:15px}
-  .pop .k{color:#555;font-weight:600}
-  .pop a{color:#b45309;word-break:break-all}
-  .legend{position:absolute;z-index:600;bottom:18px;right:12px;background:rgba(20,24,32,.92);
-        border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:11.5px}
-  .empty{padding:24px 16px;color:var(--muted);font-size:13px}
-  .note{font-size:11px;color:var(--muted);padding:8px 16px}
+  .lbl{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-weight:600}
+  .searchrow{display:flex;gap:7px;margin-top:5px}
+  input[type=text],select{width:100%;padding:8px 10px;background:var(--chipbg);color:var(--txt);
+        border:1px solid var(--line);border-radius:9px;font-size:13px;outline:none}
+  input[type=text]:focus,select:focus{border-color:var(--accent)}
+  input::placeholder{color:var(--muted2)}
+  .btn{background:var(--accent);color:#fff;border:0;border-radius:9px;padding:8px 14px;
+       font-weight:700;cursor:pointer;font-size:13px;white-space:nowrap}
+  .btn:hover{filter:brightness(1.08)}
+  .btn[disabled]{opacity:.55;cursor:wait}
+  .minor{display:flex;gap:7px;margin-top:8px}
+  .minor>*{flex:1}
+  .filtergrid{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:8px}
+  .togglerow{display:flex;gap:6px;margin-top:9px;flex-wrap:wrap}
+  .chip{background:var(--chipbg);border:1px solid var(--line);border-radius:20px;color:var(--muted);
+        font-size:11.5px;padding:4px 11px;cursor:pointer;user-select:none}
+  .chip.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:600}
+  .clearlink{background:none;border:none;color:var(--muted);font-size:11.5px;cursor:pointer;
+             text-decoration:underline;padding:4px 2px}
+
+  /* ---------- verdict ---------- */
+  #verdict{display:none;margin:10px 16px 0;background:linear-gradient(135deg,var(--accent-soft),transparent 130%);
+           border:1px solid var(--accent);border-radius:11px;padding:10px 12px}
+  #verdict h3{margin:0 0 2px;font-size:13.5px}
+  #verdict p{margin:0;font-size:12px;color:var(--muted)}
+  #verdict .vx{float:right;background:none;border:none;color:var(--muted);cursor:pointer;font-size:15px;padding:0 2px}
+
+  /* ---------- list ---------- */
+  #listhead{display:flex;align-items:center;padding:8px 16px 6px;gap:8px}
+  #count{font-size:11.5px;color:var(--muted)}
+  #sortsel{width:auto;margin-left:auto;font-size:11.5px;padding:4px 7px}
+  #list{overflow-y:auto;flex:1;overscroll-behavior:contain}
+  .item{padding:10px 16px;border-bottom:1px solid var(--line);cursor:pointer}
+  .item:hover{background:var(--panel2)}
+  .item.sel{background:var(--panel2);box-shadow:inset 3px 0 0 var(--accent)}
+  .item h3{margin:0 0 3px;font-size:13px;font-weight:600;display:flex;align-items:baseline;gap:7px}
+  .item h3 .dot{flex:none;transform:translateY(-1px)}
+  .item .meta{font-size:11.5px;color:var(--muted);display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+  .dot{display:inline-block;width:9px;height:9px;border-radius:50%}
+  .bdg{display:inline-block;font-size:10px;padding:1px 7px;border-radius:20px;border:1px solid var(--line);
+       color:var(--muted);font-variant-numeric:tabular-nums}
+  .bdg.viol{color:#fda4a4;border-color:#7f1d1d;background:rgba(127,29,29,.18)}
+  [data-theme="light"] .bdg.viol{color:#b91c1c;background:#fee2e2;border-color:#fca5a5}
+  .bdg.dist{color:var(--amber);border-color:var(--amber);background:transparent;font-weight:700}
+  .bdg.fund{color:#86efac;border-color:#14532d;background:rgba(20,83,45,.15)}
+  [data-theme="light"] .bdg.fund{color:#15803d;background:#dcfce7;border-color:#86efac}
+  .bdg.pend{border-style:dashed}
+  .empty{padding:26px 18px;color:var(--muted);font-size:13px}
+  .footnote{padding:8px 16px 10px;font-size:10.5px;color:var(--muted2);border-top:1px solid var(--line)}
+  .footnote a{color:var(--muted)}
+
+  /* ---------- detail panel ---------- */
+  #detail{position:absolute;inset:0;background:var(--panel);z-index:950;display:none;
+          flex-direction:column;min-width:0}
+  #detail.open{display:flex}
+  .dhead{padding:12px 16px;border-bottom:1px solid var(--line)}
+  .dback{background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;padding:0 0 7px;
+         letter-spacing:.03em}
+  .dback:hover{color:var(--txt)}
+  .dhead h2{margin:0;font-size:16.5px;line-height:1.28}
+  .dsub{margin-top:4px;font-size:12px;color:var(--muted)}
+  .dbadges{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+  .dbody{overflow-y:auto;flex:1;padding:4px 16px 26px;overscroll-behavior:contain}
+  .sec{margin-top:15px}
+  .sec h4{margin:0 0 7px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.09em;
+          border-bottom:1px solid var(--line);padding-bottom:5px}
+  .kv{display:grid;grid-template-columns:118px 1fr;gap:3px 10px;font-size:12.5px}
+  .kv .k{color:var(--muted)}
+  .kv .v{min-width:0;overflow-wrap:break-word}
+  .prose{font-size:12.5px;color:var(--txt);margin:0 0 6px}
+  .pill{display:inline-block;background:var(--chipbg);border:1px solid var(--line);border-radius:20px;
+        padding:2px 9px;font-size:11px;margin:0 4px 4px 0;color:var(--txt)}
+  .violitem{border-left:3px solid var(--danger);padding:5px 10px;margin:0 0 7px;background:var(--panel2);
+            border-radius:0 8px 8px 0;font-size:12px}
+  .violitem b{font-variant-numeric:tabular-nums;color:var(--danger)}
+  .money{font-size:19px;font-weight:800;font-variant-numeric:tabular-nums}
+  .money small{font-size:11px;color:var(--muted);font-weight:400}
+  .callout{background:var(--panel2);border:1px solid var(--line);border-left:3px solid var(--amber);
+           border-radius:0 9px 9px 0;padding:8px 11px;font-size:12px;color:var(--muted);margin:8px 0}
+  .srcs a{display:block;color:var(--accent);font-size:11.5px;word-break:break-all;margin-bottom:4px;
+          text-decoration:none}
+  .srcs a:hover{text-decoration:underline}
+  .dealrow{font-size:12px;padding:4px 0;border-bottom:1px dashed var(--line)}
+  .extlinks{display:flex;gap:7px;margin-top:9px;flex-wrap:wrap}
+  .extlinks a{font-size:11.5px;color:var(--txt);background:var(--chipbg);border:1px solid var(--line);
+              border-radius:8px;padding:5px 10px;text-decoration:none}
+  .extlinks a:hover{border-color:var(--accent);color:var(--accent)}
+
+  /* ---------- map chrome ---------- */
+  .legend{position:absolute;z-index:800;bottom:16px;right:12px;background:var(--panel);
+          border:1px solid var(--line);border-radius:10px;font-size:11.5px;box-shadow:var(--shadow);
+          max-width:180px}
+  .legend .lhead{padding:7px 11px;font-weight:700;cursor:pointer;user-select:none;display:flex;
+                 justify-content:space-between;gap:10px}
+  .legend .lbody{padding:0 11px 9px;display:grid;gap:3px}
+  .legend .lrow{display:flex;align-items:center;gap:7px;color:var(--muted)}
+  .legend.min .lbody{display:none}
+  .mapnote{position:absolute;z-index:800;left:12px;bottom:16px;background:var(--panel);opacity:.94;
+           border:1px solid var(--line);border-radius:9px;padding:6px 11px;font-size:10.5px;
+           color:var(--muted);max-width:330px}
+  .mapnote b{color:var(--amber)}
+  .leaflet-container{font:inherit}
+  .leaflet-tooltip.fftip{background:var(--panel);border:1px solid var(--line2);color:var(--txt);
+      border-radius:7px;font-size:11.5px;box-shadow:var(--shadow);padding:4px 9px}
+  .leaflet-tooltip.fftip::before{display:none}
+  .leaflet-control-zoom a{background:var(--panel) !important;color:var(--txt) !important;
+      border-color:var(--line) !important}
+
+  /* ---------- modal ---------- */
+  #modalback{position:fixed;inset:0;background:rgba(4,6,10,.66);z-index:2000;display:none;
+             align-items:flex-start;justify-content:center;padding:4vh 14px;overflow-y:auto}
+  #modalback.open{display:flex}
+  .modal{background:var(--panel);border:1px solid var(--line2);border-radius:14px;max-width:680px;
+         width:100%;box-shadow:var(--shadow);margin-bottom:6vh}
+  .mhead{display:flex;align-items:center;padding:15px 20px;border-bottom:1px solid var(--line)}
+  .mhead h2{margin:0;font-size:16px}
+  .mhead button{margin-left:auto;background:none;border:none;color:var(--muted);font-size:19px;cursor:pointer}
+  .mbody{padding:6px 20px 20px;font-size:13px}
+  .mbody h3{font-size:13px;margin:16px 0 5px;color:var(--accent);text-transform:uppercase;letter-spacing:.06em}
+  .mbody p,.mbody li{color:var(--txt);font-size:12.8px}
+  .mbody .warn{background:var(--accent-soft);border:1px solid var(--accent);border-radius:10px;
+               padding:10px 13px;font-size:12.6px}
+  .mbody a{color:var(--accent)}
+  .mbody table{width:100%;border-collapse:collapse;font-size:12px}
+  .mbody td,.mbody th{border-bottom:1px solid var(--line);padding:4px 6px;text-align:left}
+
+  /* ---------- mobile ---------- */
+  #mobtabs{display:none}
+  @media (max-width:860px){
+    #app{grid-template-columns:1fr;grid-template-rows:52vh 1fr}
+    #side{order:2;border-right:none;border-top:1px solid var(--line)}
+    #mapwrap{order:1}
+    header{padding:10px 14px 8px}
+    .statgrid{grid-template-columns:repeat(4,1fr);gap:5px}
+    .stat b{font-size:13px}
+    #detail{position:fixed;inset:0;z-index:1200}
+    .mapnote{display:none}
+  }
 </style>
 </head>
 <body>
 <div id="app">
   <div id="side">
     <header>
-      <h1><span>🔥 Fido's Flame</span> — Animal Testing Facilities</h1>
-      <p>Nationwide rollout, state by state · public-records OSINT for real-estate proximity screening</p>
+      <div class="brandrow">
+        <div class="flame">🔥</div>
+        <div class="brand">
+          <h1>Fido's <b>Flame</b></h1>
+          <p>U.S. Animal Research Facility Registry</p>
+        </div>
+        <div class="hbtns">
+          <button class="icobtn" id="aboutbtn" title="Methodology, sources & caveats">About&nbsp;the&nbsp;data</button>
+          <button class="icobtn" id="themebtn" title="Toggle light/dark">◐</button>
+        </div>
+      </div>
+      <div class="statgrid" id="stats"></div>
     </header>
-    <div class="stats" id="stats"></div>
+
     <div class="controls">
-      <label>Check an address (find facilities nearby)</label>
-      <input id="addr" placeholder="e.g. 1 Main St, Davis, CA" />
-      <div class="row">
+      <div class="lbl">Screen an address — what's nearby?</div>
+      <div class="searchrow">
+        <input type="text" id="addr" placeholder="Street, city, state — e.g. 401 Congress Ave, Austin, TX" autocomplete="off" />
+        <button class="btn" id="go">Check</button>
+      </div>
+      <div class="minor">
         <select id="radius">
-          <option value="1">within 1 mi</option>
-          <option value="3" selected>within 3 mi</option>
-          <option value="5">within 5 mi</option>
-          <option value="10">within 10 mi</option>
-          <option value="25">within 25 mi</option>
+          <option value="1">within 1 mile</option>
+          <option value="3">within 3 miles</option>
+          <option value="5" selected>within 5 miles</option>
+          <option value="10">within 10 miles</option>
+          <option value="25">within 25 miles</option>
+          <option value="50">within 50 miles</option>
         </select>
-        <button id="go">Search</button>
+        <input type="text" id="q" placeholder="Filter by name / operator / city…" autocomplete="off" />
       </div>
-      <div class="row">
+      <div class="filtergrid">
         <select id="ftype"><option value="">All facility types</option></select>
-        <select id="fviol">
-          <option value="">All records</option>
-          <option value="viol">Only with violations</option>
+        <select id="fstate"><option value="">All states</option></select>
+        <select id="fspecies"><option value="">Any species</option></select>
+        <select id="fclass">
+          <option value="">Any registration</option>
+          <option value="R">USDA Class R — research</option>
+          <option value="F">USDA Class F — federal</option>
+          <option value="V">USDA Class V — VA</option>
+          <option value="G">USDA Class G — ARS</option>
+          <option value="D">Discovered (non-USDA)</option>
         </select>
       </div>
-      <div class="row"><button class="ghost" id="reset">Reset view</button></div>
+      <div class="togglerow">
+        <span class="chip" id="cviol">⚠ AWA violations</span>
+        <span class="chip" id="cfund">$ Federally funded</span>
+        <span class="chip" id="cver">✓ Verified records</span>
+        <button class="clearlink" id="clearall">reset</button>
+      </div>
+    </div>
+
+    <div id="verdict"></div>
+
+    <div id="listhead">
+      <span id="count"></span>
+      <select id="sortsel">
+        <option value="name">Sort: name</option>
+        <option value="viol">Sort: violations</option>
+        <option value="fund">Sort: federal funding</option>
+        <option value="dist">Sort: distance</option>
+      </select>
     </div>
     <div id="list"></div>
-    <div class="note">Locations are facility/organization addresses from public records (USDA APHIS, NIH).
-      Geocoding may be approximate. Not all labs report all species (mice/rats/birds are AWA-exempt).</div>
+    <div class="footnote">
+      Facility &amp; organization <b>public records only</b> — USDA APHIS · NIH RePORTER · inspection records.
+      Mice, rats &amp; birds are AWA-exempt, so this map is a <i>floor, not a ceiling</i>.
+      <a href="#" id="aboutlink">Methodology &amp; caveats</a>
+    </div>
+
+    <div id="detail">
+      <div class="dhead">
+        <button class="dback" id="dback">← Back to list</button>
+        <h2 id="dname"></h2>
+        <div class="dsub" id="dsub"></div>
+        <div class="dbadges" id="dbadges"></div>
+      </div>
+      <div class="dbody" id="dbody"></div>
+    </div>
   </div>
-  <div id="map"></div>
-  <div class="legend" id="legend"></div>
+
+  <div id="mapwrap">
+    <div id="map"></div>
+    <div class="legend min" id="legend"></div>
+    <div class="mapnote"><b>Data caveat:</b> the Animal Welfare Act exempts mice, rats &amp; birds
+      (~95% of lab animals) — rodent-only labs appear here only when found via NIH/OLAW/public
+      records. Absence from this map is not evidence of absence.</div>
+  </div>
 </div>
+
+<div id="modalback"><div class="modal">
+  <div class="mhead"><h2>About this dataset</h2><button id="mclose">✕</button></div>
+  <div class="mbody" id="mbody"></div>
+</div></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="facilities_data.js"></script>
 <script>
-const TYPE_COLORS = {
-  academic:"#60a5fa", college:"#38bdf8", pharma:"#f472b6", biotech:"#c084fc",
-  CRO:"#fb923c", government:"#a3e635", hospital:"#2dd4bf", VA:"#14b8a6",
-  "zoo-aquarium":"#facc15", other:"#94a3b8"
+'use strict';
+/* ============ all top-level state declared BEFORE any code runs (TDZ lesson) ============ */
+let map=null, tiles=null, markers={}, canvas=null, pin=null, ring=null, origin=null;
+let ROWS=[], selId=null, theme='dark';
+const $=id=>document.getElementById(id);
+const esc=s=>(s==null?'':String(s)).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+/* ---------------- type normalization (the data has a freeform tail) ---------------- */
+const TYPES={
+  academic:      {label:'Academic / university', color:'#5b9cf6'},
+  hospital:      {label:'Hospital / medical center', color:'#2dd4bf'},
+  va:            {label:'VA hospital', color:'#67e8f9'},
+  government:    {label:'Government lab', color:'#8fce44'},
+  military:      {label:'Military / defense', color:'#a3a15a'},
+  biotech_pharma:{label:'Biotech / pharma', color:'#b07af7'},
+  cro:           {label:'Contract research (CRO)', color:'#fb923c'},
+  commercial:    {label:'Commercial / corporate', color:'#f0699e'},
+  nonprofit:     {label:'Nonprofit institute', color:'#e5c453'},
+  zoo:           {label:'Zoo / sanctuary / aquarium', color:'#fbbf24'},
+  other:         {label:'Other', color:'#94a3b8'},
 };
-const colorFor = t => TYPE_COLORS[(t||"other")] || TYPE_COLORS.other;
-const esc = s => (s==null?"":String(s)).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
-function miles(a,b,c,d){const R=3958.8,r=Math.PI/180;const dLat=(c-a)*r,dLon=(d-b)*r;
-  const x=Math.sin(dLat/2)**2+Math.cos(a*r)*Math.cos(c*r)*Math.sin(dLon/2)**2;
+function normType(t){
+  const s=String(t||'').toLowerCase();
+  if(!s) return 'other';
+  if(s==='va'||/\bva\b.*(hospital|medical|veterans)|veterans affairs|va hospital|- va\b/.test(s)) return 'va';
+  if(/military|defense|army|navy|air force|dod|combat|tactical/.test(s)) return 'military';
+  if(/zoo|aquarium|sanctuar|marine mammal.*(rehab|hospital)/.test(s)) return 'zoo';
+  if(/\bcro\b|contract research|contract.*(testing|antibody)/.test(s)) return 'cro';
+  if(/biotech|pharma|medical device|biopharma|vaccine/.test(s)) return 'biotech_pharma';
+  if(/hospital|medical center|health system|pediatric|clinic\b/.test(s)) return 'hospital';
+  if(/academic|university|college|school/.test(s)) return 'academic';
+  if(/government|federal|usda|ars\b|state .*(lab|diagnostic)|county|city\b/.test(s)) return 'government';
+  if(/nonprofit|non-profit|institute\b/.test(s)) return 'nonprofit';
+  if(/commercial|corporate|company|inc\b|llc\b/.test(s)) return 'commercial';
+  return TYPES[s]?s:'other';
+}
+/* ---------------- species grouping ---------------- */
+const SPECIES_GROUPS={
+  primates:{label:'Primates',kw:/monkey|macaque|primate|marmoset|baboon|chimp|rhesus|lemur|vervet/i},
+  dogs:{label:'Dogs',kw:/\bdogs?\b|canine|beagle/i},
+  cats:{label:'Cats',kw:/\bcats?\b|feline/i},
+  rabbits:{label:'Rabbits',kw:/rabbit|lagomorph/i},
+  rodents:{label:'Rodents (mice, rats…)',kw:/mice|mouse|\brats?\b|rodent|hamster|guinea|gerbil|vole/i},
+  farm:{label:'Farm animals',kw:/\bpigs?\b|swine|porcine|sheep|ovine|goats?|cattle|bovine|cows?|calves|horse|equine|poultry|chicken|ferret/i},
+  marine:{label:'Marine / fish',kw:/dolphin|\bfish\b|zebrafish|marine|whale|seal|sea lion|manatee|turtle|amphibian|frog|xenopus/i},
+  birds:{label:'Birds',kw:/\bbirds?\b|avian|pigeon|quail|finch|owl(?! monkey)/i},
+};
+function speciesGroups(r){
+  const txt=(r.species||[]).join(' ');
+  const out=[];
+  for(const k in SPECIES_GROUPS) if(SPECIES_GROUPS[k].kw.test(txt)) out.push(k);
+  return out;
+}
+/* ---------------- formatting ---------------- */
+function usd(n){ n=+n; if(!n||isNaN(n)) return null; const a=Math.abs(n);
+  if(a>=1e9) return '$'+(n/1e9).toFixed(a>=1e10?0:1).replace(/\.0$/,'')+'B';
+  if(a>=1e6) return '$'+(n/1e6).toFixed(a>=1e8?0:1).replace(/\.0$/,'')+'M';
+  if(a>=1e3) return '$'+Math.round(n/1e3)+'K';
+  return '$'+n.toLocaleString(); }
+function miles(a,b,c,d){const R=3958.8,r=Math.PI/180,dl=(c-a)*r,dn=(d-b)*r;
+  const x=Math.sin(dl/2)**2+Math.cos(a*r)*Math.cos(c*r)*Math.sin(dn/2)**2;
   return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));}
+const CLASSNAMES={R:'USDA Class R (research facility)',F:'USDA Class F (federal facility)',
+  V:'USDA Class V (VA hospital)',G:'USDA Class G (USDA ARS)',D:'Discovered — not USDA-registered'};
 
-const GJ = window.FACILITIES_GEOJSON;
-const map = L.map('map').setView([37.3,-119.6], 6);
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-  {attribution:'© OpenStreetMap, © CARTO', subdomains:'abcd', maxZoom:19}).addTo(map);
+/* ---------------- filter state ---------------- */
+const F={q:'',type:'',st:'',species:'',cls:'',viol:false,fund:false,ver:false,sort:'name'};
 
-let markers=[], pin=null, ring=null, originLL=null;
-function init(){
-  const feats=GJ.features;
-  // populate type filter
-  const types=[...new Set(feats.map(f=>f.properties.facility_type).filter(Boolean))].sort();
-  const sel=document.getElementById('ftype');
-  types.forEach(t=>{const o=document.createElement('option');o.value=t;o.textContent=t;sel.appendChild(o);});
-  // stats
-  const viol=feats.filter(f=>(f.properties.violations||[]).length).length;
-  const fund=feats.reduce((s,f)=>s+(+f.properties.funding_federal_usd||0),0);
-  document.getElementById('stats').innerHTML=
-    `<div class="stat"><b>${feats.length}</b>facilities</div>
-     <div class="stat"><b>${viol}</b>with violations</div>
-     <div class="stat"><b>$${(fund/1e9).toFixed(1)}B</b>fed funding</div>`;
-  // legend
-  document.getElementById('legend').innerHTML='<b>Facility type</b><br>'+
-    Object.entries(TYPE_COLORS).map(([k,v])=>`<span class="dot" style="background:${v}"></span>${k}`).join('<br>');
-  draw(feats); render(feats);
-  document.getElementById('go').onclick=search;
-  document.getElementById('addr').addEventListener('keydown',e=>{if(e.key==='Enter')search();});
-  document.getElementById('ftype').onchange=applyFilters;
-  document.getElementById('fviol').onchange=applyFilters;
-  document.getElementById('reset').onclick=()=>{map.setView([37.3,-119.6],6);if(pin){map.removeLayer(pin);pin=null;}
-    if(ring){map.removeLayer(ring);ring=null;}originLL=null;document.getElementById('addr').value='';applyFilters();};
+function rowMatches(r){
+  if(F.type && r._t!==F.type) return false;
+  if(F.st && r.st!==F.st) return false;
+  if(F.cls && r.cls!==F.cls) return false;
+  if(F.viol && !r.nviol) return false;
+  if(F.fund && !(r.fund>0||r.nih>0)) return false;
+  if(F.ver && !r.verified) return false;
+  if(F.species && !r._sg.includes(F.species)) return false;
+  if(F.q){
+    const q=F.q.toLowerCase();
+    if(!(r._hay.includes(q))) return false;
+  }
+  if(origin && r._d!=null){
+    if(r._d> +$('radius').value) return false;
+  }
+  return true;
 }
-function draw(feats){
-  markers.forEach(m=>map.removeLayer(m)); markers=[];
-  feats.forEach(f=>{
-    const p=f.properties, [lon,lat]=f.geometry.coordinates;
-    const hasV=(p.violations||[]).length>0;
-    const m=L.circleMarker([lat,lon],{radius:7,color:hasV?'#ef4444':'#0b0e13',weight:hasV?2:1,
-      fillColor:colorFor(p.facility_type),fillOpacity:.9});
-    m.bindPopup(popup(p),{maxWidth:340,maxHeight:440,autoPanPadding:[24,24]}); m._f=f; m.addTo(map); markers.push(m);
+function currentRows(){
+  const rows=ROWS.filter(rowMatches);
+  const s=F.sort;
+  rows.sort((a,b)=>{
+    if(s==='dist'&&origin) return (a._d??9e9)-(b._d??9e9);
+    if(s==='viol') return b.nviol-a.nviol || (b.fund-a.fund);
+    if(s==='fund') return (Math.max(b.fund,b.nih))-(Math.max(a.fund,a.nih));
+    if(origin) return (a._d??9e9)-(b._d??9e9);
+    return a.name.localeCompare(b.name);
   });
+  return rows;
 }
-function usd(n){ n=+n; if(!n||isNaN(n))return '—'; const a=Math.abs(n);
-  if(a>=1e9)return '$'+(n/1e9).toFixed(1).replace(/\.0$/,'')+'B';
-  if(a>=1e6)return '$'+(n/1e6).toFixed(1).replace(/\.0$/,'')+'M';
-  if(a>=1e3)return '$'+Math.round(n/1e3)+'K'; return '$'+n.toLocaleString(); }
-function trunc(s,n){ s=String(s||''); return s.length>n?s.slice(0,n-1)+'…':s; }
-function orgIntelHtml(p){
-  const oi=p.org_intel; if(!oi)return '';
-  const lead=oi.org_leadership||{}, rec=oi.institutional_recognition||{},
-        corp=oi.corporate_structure_and_deals||{}, reg=oi.regulatory_oversight||{},
-        ver=p.org_intel_verification||{};
-  const own=[lead.ownership_type,corp.ticker].filter(Boolean).map(esc).join(' · ');
-  const parent=corp.ultimate_parent||corp.parent||'';
-  const money=[];
-  if(rec.market_cap_or_venture_raised_usd)money.push('mkt cap/raised '+usd(rec.market_cap_or_venture_raised_usd));
-  if(rec.endowment_or_annual_revenue_usd)money.push('endow./rev. '+usd(rec.endowment_or_annual_revenue_usd));
-  if(rec.total_funding_picture_usd)money.push('funding '+usd(rec.total_funding_picture_usd));
-  const officers=(lead.top_officers||[]).slice(0,3).map(o=>esc((o.title||'')+': '+(o.name||''))).join('<br>');
-  const accred=(rec.accreditations||[]).slice(0,3).map(a=>esc(String(a).split(' - ')[0].split(' (')[0])).join(' · ');
-  const deals=(corp.deals||[]), dtot=deals.reduce((s,d)=>s+(+d.value_usd||0),0);
-  const drows=deals.slice(0,3).map(d=>'• '+esc(d.date||'')+' '+esc(d.type||'')+(d.counterparty?' · '+esc(d.counterparty):'')+(d.value_usd?' · '+usd(d.value_usd):'')).join('<br>');
-  const nfab=(ver.fabrication_flags||[]).length;
-  let h='<div style="margin-top:6px;padding-top:5px;border-top:1px solid #e5e7eb">'+
-    '<div style="font-weight:600;margin-bottom:2px">💰 Money &amp; Oversight</div>';
-  if(own)h+='<div><span class="k">Ownership:</span> '+own+'</div>';
-  if(parent)h+='<div><span class="k">Ultimate parent:</span> '+esc(parent)+'</div>';
-  if(money.length)h+='<div><span class="k">Money:</span> '+esc(money.join(' · '))+'</div>';
-  if(officers)h+='<div><span class="k">Leadership:</span><br>'+officers+'</div>';
-  if(accred)h+='<div><span class="k">Accreditation:</span> '+accred+'</div>';
-  if(reg.oversight_notes)h+='<div><span class="k">Oversight:</span> '+esc(trunc(reg.oversight_notes,200))+'</div>';
-  if(deals.length)h+='<div style="margin-top:3px"><span class="k">Deals ('+deals.length+(dtot?', '+usd(dtot)+' disclosed':'')+'):</span><br>'+drows+'</div>';
-  h+='<div style="margin-top:3px;color:#6b7280;font-size:11px">org-intel confidence: '+esc(oi.block_confidence||ver.confidence||'?')+(nfab?' · '+nfab+' data flag(s)':'')+'</div>';
-  return h+'</div>';
+
+/* ---------------- map ---------------- */
+function markerStyle(r,sel){
+  const t=TYPES[r._t]||TYPES.other;
+  const fund=Math.max(r.fund,r.nih);
+  let rad=fund>=1e8?8.5:fund>=1e7?7:5.5;
+  if(sel) rad+=2.5;
+  return {radius:rad,fillColor:t.color,fillOpacity:.92,
+          color:sel?'#ffffff':(r.nviol?'#f05252':'rgba(0,0,0,.55)'),
+          weight:sel?2.5:(r.nviol?2:1)};
 }
-function popup(p){
-  const v=(p.violations||[]);
-  const fund=p.funding_federal_usd?('$'+(+p.funding_federal_usd).toLocaleString()):'—';
-  return `<div class="pop"><h3>${esc(p.name)}</h3>
-    <div><span class="k">Type:</span> ${esc(p.facility_type||'?')} ${p.parent_company?('· '+esc(p.parent_company)):''}</div>
-    <div><span class="k">Address:</span> ${esc(p.physical_address||'?')}</div>
-    ${p.species_used?`<div><span class="k">Species:</span> ${esc((p.species_used||[]).join(', '))}</div>`:''}
-    ${p.testing_methods?`<div><span class="k">Methods:</span> ${esc(p.testing_methods)}</div>`:''}
-    <div><span class="k">Federal funding:</span> ${fund}</div>
-    ${(p.corporate_partners||[]).length?`<div><span class="k">Partners:</span> ${esc((p.corporate_partners||[]).join(', '))}</div>`:''}
-    <div><span class="k">USDA:</span> ${esc(p.reg||'')} · conf: ${esc(p.confidence||'?')}</div>
-    ${v.length?`<div style="margin-top:5px"><span class="k" style="color:#b91c1c">Violations (${v.length}):</span><br>`+
-      v.slice(0,4).map(x=>`• ${esc(x.date||'')} ${esc(x.description||'')}`).join('<br>')+`</div>`:''}
-    ${p.inspection_history?`<div style="margin-top:4px"><span class="k">Inspections:</span> ${esc(p.inspection_history)}</div>`:''}
-    ${orgIntelHtml(p)}
-    ${(p.sources||[]).length?`<div style="margin-top:5px"><a href="${esc(p.sources[0])}" target="_blank">source ↗</a></div>`:''}
+function buildMarkers(){
+  canvas=L.canvas({padding:.4});
+  for(const r of ROWS){
+    const m=L.circleMarker([r.lat,r.lon],{renderer:canvas,...markerStyle(r,false)});
+    m.bindTooltip(esc(r.name),{className:'fftip',direction:'top',offset:[0,-6]});
+    m.on('click',()=>openDetail(r.id,false));
+    markers[r.id]=m;
+  }
+}
+function refreshMap(rows){
+  const want=new Set(rows.map(r=>r.id));
+  for(const r of ROWS){
+    const m=markers[r.id], on=map.hasLayer(m);
+    if(want.has(r.id)&&!on) m.addTo(map);
+    else if(!want.has(r.id)&&on) map.removeLayer(m);
+  }
+}
+function tileURL(){
+  return theme==='dark'
+    ?'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+    :'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+}
+function setTheme(t){
+  theme=t;
+  document.documentElement.setAttribute('data-theme',t==='light'?'light':'dark');
+  try{localStorage.setItem('ff_theme',t);}catch(e){}
+  if(tiles) tiles.setUrl(tileURL());
+}
+
+/* ---------------- list ---------------- */
+function render(){
+  const rows=currentRows();
+  refreshMap(rows);
+  const cap=500;
+  $('count').textContent=rows.length===ROWS.length
+    ? `${rows.length.toLocaleString()} facilities`
+    : `${rows.length.toLocaleString()} of ${ROWS.length.toLocaleString()} facilities`;
+  const list=$('list');
+  if(!rows.length){list.innerHTML='<div class="empty">Nothing matches these filters.'+(origin?' Try a larger radius.':'')+'</div>';return;}
+  const html=rows.slice(0,cap).map(r=>{
+    const t=TYPES[r._t]||TYPES.other;
+    const fund=Math.max(r.fund,r.nih);
+    return `<div class="item${r.id===selId?' sel':''}" data-id="${esc(r.id)}">
+      <h3><span class="dot" style="background:${t.color}"></span><span>${esc(r.name)}</span></h3>
+      <div class="meta">
+        <span>${esc(r.city||'?')}, ${esc(r.st)}</span>
+        ${origin&&r._d!=null?`<span class="bdg dist">${r._d<10?r._d.toFixed(1):Math.round(r._d)} mi</span>`:''}
+        ${r.nviol?`<span class="bdg viol">${r.nviol} violation${r.nviol>1?'s':''}</span>`:''}
+        ${fund?`<span class="bdg fund">${usd(fund)} federal</span>`:''}
+        ${r.verified?'':'<span class="bdg pend">verification pending</span>'}
+      </div></div>`;
+  }).join('')+(rows.length>cap?`<div class="empty">…and ${(rows.length-cap).toLocaleString()} more — refine filters to see them all.</div>`:'');
+  list.innerHTML=html;
+  list.querySelectorAll('.item').forEach(el=>el.onclick=()=>openDetail(el.dataset.id,true));
+  renderVerdict(rows);
+}
+function renderVerdict(rows){
+  const v=$('verdict');
+  if(!origin){v.style.display='none';return;}
+  const rad=+$('radius').value;
+  const inR=rows.filter(r=>r._d!=null&&r._d<=rad);
+  const nearest=inR[0]&&Math.min(...inR.map(r=>r._d));
+  const nviol=inR.filter(r=>r.nviol).length;
+  v.style.display='block';
+  v.innerHTML=`<button class="vx" id="vclose" title="Clear screening">✕</button>
+    <h3>${inR.length?`${inR.length} facilit${inR.length===1?'y':'ies'} within ${rad} mi`:`No known facilities within ${rad} mi`}</h3>
+    <p>${esc(origin.label)}${inR.length?` · nearest ${nearest<10?nearest.toFixed(1):Math.round(nearest)} mi away${nviol?` · ${nviol} with recorded AWA violations`:''}`:' — remember: rodent-only labs are often invisible to public records.'}</p>`;
+  $('vclose').onclick=clearScreen;
+}
+
+/* ---------------- detail ---------------- */
+function kv(k,v){return v?`<div class="k">${k}</div><div class="v">${v}</div>`:'';}
+function openDetail(id,fly){
+  const r=ROWS.find(x=>x.id===id); if(!r) return;
+  if(selId&&markers[selId]) markers[selId].setStyle(markerStyle(ROWS.find(x=>x.id===selId),false));
+  selId=id;
+  const m=markers[id];
+  if(m){m.setStyle(markerStyle(r,true)); m.bringToFront&&m.bringToFront();
+    if(fly) map.flyTo([r.lat,r.lon],Math.max(map.getZoom(),11),{duration:.6});}
+  try{history.replaceState(null,'','#f='+encodeURIComponent(id));}catch(e){}
+  const t=TYPES[r._t]||TYPES.other;
+  $('dname').textContent=r.name;
+  $('dsub').innerHTML=`${esc(r.addr||(r.city+', '+r.st))}`;
+  const conf=(r.conf||'').replace('low-medium','low');
+  $('dbadges').innerHTML=[
+    `<span class="pill" style="border-color:${t.color};color:${t.color}">● ${esc(t.label)}</span>`,
+    `<span class="pill">${esc(CLASSNAMES[r.cls]||r.cls)}</span>`,
+    r.id&&r.cls!=='D'?`<span class="pill">USDA ${esc(r.id)}</span>`:'',
+    conf?`<span class="pill">confidence: ${esc(conf)}</span>`:'',
+    r.genuine===false?'<span class="pill" style="border-color:var(--amber);color:var(--amber)">unconfirmed as testing lab</span>':'',
+    r.verified?'':'<span class="pill bdg pend">adversarial verification pending</span>',
+    r.backfill?'<span class="pill">manual backfill</span>':'',
+  ].filter(Boolean).join('');
+
+  const fund=Math.max(r.fund,r.nih);
+  const sg=r._sg.map(k=>SPECIES_GROUPS[k].label);
+  let h='';
+  if(r.note) h+=`<div class="callout">⚠ ${esc(r.note)}</div>`;
+  if(r.desc) h+=`<div class="sec"><h4>What this facility is</h4><p class="prose">${esc(r.desc)}</p>
+    <div class="kv">${kv('Operator',esc(r.operator))}${kv('Parent',esc(r.parent))}</div></div>`;
+  if((r.species||[]).length||r.methods) h+=`<div class="sec"><h4>Animals &amp; methods</h4>
+    ${(r.species||[]).length?`<div>${r.species.map(s=>`<span class="pill">${esc(s)}</span>`).join('')}</div>`:''}
+    ${sg.length?`<div style="font-size:11px;color:var(--muted);margin:3px 0 6px">Groups: ${esc(sg.join(' · '))}</div>`:''}
+    ${r.methods?`<p class="prose">${esc(r.methods)}</p>`:''}</div>`;
+  h+=`<div class="sec"><h4>Inspections &amp; violations</h4>`;
+  if(r.nviol){
+    h+=`<p class="prose" style="color:var(--danger);font-weight:600">${r.nviol} recorded AWA violation${r.nviol>1?'s':''}</p>`;
+    h+=(r.viol||[]).map(v=>`<div class="violitem"><b>${esc(v.d||'date n/a')}</b>${v.s?` · ${esc(v.s)}`:''}<br>${esc(v.t)}</div>`).join('');
+    if(r.nviol>(r.viol||[]).length) h+=`<p class="prose" style="color:var(--muted)">…${r.nviol-(r.viol||[]).length} more in the full dataset (CSV).</p>`;
+  } else h+=`<p class="prose" style="color:var(--muted)">No AWA violations found in the records reviewed. (Rodent-only work is not USDA-inspected.)</p>`;
+  if(r.insp) h+=`<p class="prose" style="color:var(--muted)">${esc(r.insp)}</p>`;
+  h+=`</div>`;
+  h+=`<div class="sec"><h4>Follow the money</h4>`;
+  if(fund){ h+=`<div class="money">${usd(fund)} <small>recent federal funding</small></div>`;
+    if(r.nih&&r.nih_org) h+=`<p class="prose" style="color:var(--muted)">NIH RePORTER FY23–24: ${usd(r.nih)} to “${esc(r.nih_org)}”.</p>`;
+    if(r.fund_notes) h+=`<p class="prose" style="color:var(--muted)">${esc(r.fund_notes)}</p>`;
+  } else h+=`<p class="prose" style="color:var(--muted)">No federal funding traced in NIH RePORTER FY23–24 under this name.</p>`;
+  if((r.funders||[]).length) h+=`<div>${r.funders.map(s=>`<span class="pill">${esc(s)}</span>`).join('')}</div>`;
+  h+=`</div>`;
+  const oi=r.oi;
+  if(oi){
+    const money=[oi.mc?`raised/market cap ${usd(oi.mc)}`:null, oi.rev?`endowment/revenue ${usd(oi.rev)}`:null].filter(Boolean).join(' · ');
+    h+=`<div class="sec"><h4>The organization behind it</h4><div class="kv">
+      ${kv('Ownership',esc(oi.own))}
+      ${kv('Ultimate parent',esc(oi.parent))}
+      ${kv('Ticker',oi.ticker?`<span class="pill">${esc(oi.ticker)}</span>`:'')}
+      ${kv('Scale',esc(money))}
+      ${kv('Leadership',(oi.officers||[]).map(o=>esc((o.t?o.t+': ':'')+o.n)).join('<br>'))}
+      ${kv('Accreditation',(oi.accred||[]).map(esc).join(' · '))}
     </div>`;
+    if((oi.deals||[]).length){
+      h+=`<div style="margin-top:7px;font-size:11.5px;color:var(--muted)">Deals &amp; transactions (${oi.ndeals}${oi.deals_usd?`, ${usd(oi.deals_usd)} disclosed`:''}):</div>`;
+      h+=oi.deals.map(d=>`<div class="dealrow"><b>${esc(d.d||'')}</b> ${esc(d.t||'')}${d.c?` — ${esc(d.c)}`:''}${d.v?` · <b>${usd(d.v)}</b>`:''}${d.x?`<br><span style="color:var(--muted)">${esc(d.x)}</span>`:''}</div>`).join('');
+    }
+    if(oi.oversight) h+=`<p class="prose" style="color:var(--muted);margin-top:7px">${esc(oi.oversight)}</p>`;
+    h+=`</div>`;
+  }
+  if((r.partners||[]).length) h+=`<div class="sec"><h4>Known partners</h4><div>${r.partners.map(s=>`<span class="pill">${esc(s)}</span>`).join('')}</div></div>`;
+  h+=`<div class="sec"><h4>Record provenance</h4><div class="kv">
+    ${kv('Address quality',esc(r.geoq||''))}
+    ${kv('Address verified',r.av===true?'yes':r.av===false?'<span style="color:var(--amber)">could not confirm</span>':'')}
+    ${kv('Data flags',r.vflags?`${r.vflags} claim${r.vflags>1?'s':''} flagged unverifiable by the adversarial reviewer`:'')}
+    ${kv('Known gaps',(r.gaps||[]).map(esc).join('; '))}
+  </div>
+  ${(r.src||[]).length?`<div class="srcs" style="margin-top:8px">${r.src.map(u=>`<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${esc(u.replace(/^https?:\/\/(www\.)?/,'').slice(0,80))}</a>`).join('')}</div>`:''}
+  <div class="extlinks">
+    <a href="https://www.google.com/maps/search/?api=1&query=${r.lat}%2C${r.lon}" target="_blank" rel="noopener noreferrer">Open in Google Maps ↗</a>
+    ${r.cls!=='D'?`<a href="https://aphis.my.site.com/PublicSearchTool/s/" target="_blank" rel="noopener noreferrer">USDA APHIS search ↗</a>`:''}
+  </div></div>`;
+  $('dbody').innerHTML=h;
+  $('dbody').scrollTop=0;
+  $('detail').classList.add('open');
+  document.querySelectorAll('.item').forEach(el=>el.classList.toggle('sel',el.dataset.id===id));
 }
-function currentFilter(){
-  const t=document.getElementById('ftype').value, vo=document.getElementById('fviol').value;
-  return GJ.features.filter(f=>{
-    if(t && f.properties.facility_type!==t) return false;
-    if(vo==='viol' && !(f.properties.violations||[]).length) return false;
-    return true;
-  });
+function closeDetail(){
+  $('detail').classList.remove('open');
+  if(selId&&markers[selId]){const r=ROWS.find(x=>x.id===selId);markers[selId].setStyle(markerStyle(r,false));}
+  selId=null;
+  try{history.replaceState(null,'',location.pathname+location.search);}catch(e){}
+  render();
 }
-function applyFilters(){ let feats=currentFilter();
-  if(originLL){const r=+document.getElementById('radius').value;
-    feats=feats.filter(f=>miles(originLL[0],originLL[1],f.geometry.coordinates[1],f.geometry.coordinates[0])<=r);}
-  draw(feats); render(feats, !!originLL);
-}
-function render(feats, withDist){
-  const list=document.getElementById('list');
-  let arr=feats.map(f=>({f,d:originLL?miles(originLL[0],originLL[1],f.geometry.coordinates[1],f.geometry.coordinates[0]):null}));
-  if(withDist) arr.sort((a,b)=>a.d-b.d); else arr.sort((a,b)=>a.f.properties.name.localeCompare(b.f.properties.name));
-  if(!arr.length){list.innerHTML='<div class="empty">No facilities match.</div>';return;}
-  list.innerHTML=arr.map(({f,d})=>{const p=f.properties,hasV=(p.violations||[]).length;
-    return `<div class="item" data-reg="${esc(p.reg)}">
-      <h3><span class="dot" style="background:${colorFor(p.facility_type)}"></span>${esc(p.name)}</h3>
-      <div class="meta">${esc(p.city||'')} · ${esc(p.facility_type||'?')}
-        ${d!=null?`<span class="badge b-dist">${d.toFixed(1)} mi</span>`:''}
-        ${hasV?`<span class="badge b-viol">${hasV} viol</span>`:''}</div></div>`;}).join('');
-  [...list.querySelectorAll('.item')].forEach(el=>el.onclick=()=>{
-    const m=markers.find(mk=>mk._f.properties.reg===el.dataset.reg);
-    if(m){map.setView(m.getLatLng(),13);m.openPopup();}});
-}
-async function search(){
-  const q=document.getElementById('addr').value.trim(); if(!q)return;
-  const btn=document.getElementById('go'); btn.textContent='…';
+
+/* ---------------- screening ---------------- */
+async function screen(){
+  const q=$('addr').value.trim(); if(!q) return;
+  const btn=$('go'); btn.disabled=true; btn.textContent='…';
   try{
     const r=await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q='+encodeURIComponent(q),
       {headers:{'Accept':'application/json'}});
     const d=await r.json();
-    if(!d.length){alert('Address not found. Try adding city + state.');return;}
-    originLL=[+d[0].lat,+d[0].lon];
-    if(pin)map.removeLayer(pin); if(ring)map.removeLayer(ring);
-    pin=L.marker(originLL).addTo(map).bindPopup('📍 '+esc(q)).openPopup();
-    const rad=+document.getElementById('radius').value;
-    ring=L.circle(originLL,{radius:rad*1609.34,color:'#ff7a45',weight:1,fillOpacity:.06}).addTo(map);
-    map.fitBounds(ring.getBounds(),{padding:[40,40]});
-    applyFilters();
-  }catch(e){alert('Lookup failed: '+e);}finally{btn.textContent='Search';}
+    if(!d.length){alert('Address not found — try adding city and state.');return;}
+    origin={lat:+d[0].lat,lon:+d[0].lon,label:d[0].display_name.split(',').slice(0,3).join(',')};
+    for(const row of ROWS) row._d=miles(origin.lat,origin.lon,row.lat,row.lon);
+    F.sort='dist'; $('sortsel').value='dist';
+    drawOrigin();
+    render();
+  }catch(e){alert('Address lookup failed (offline?): '+e.message);}
+  finally{btn.disabled=false;btn.textContent='Check';}
 }
-document.getElementById('radius')&&document.getElementById('radius').addEventListener('change',()=>{if(originLL)search();});
+function drawOrigin(){
+  if(pin)map.removeLayer(pin); if(ring)map.removeLayer(ring);
+  const rad=+$('radius').value;
+  pin=L.marker([origin.lat,origin.lon]).addTo(map);
+  ring=L.circle([origin.lat,origin.lon],{radius:rad*1609.34,color:'var(--accent)',weight:1.4,
+    color:'#ff6d3d',fillColor:'#ff6d3d',fillOpacity:.05}).addTo(map);
+  map.fitBounds(ring.getBounds(),{padding:[30,30]});
+}
+function clearScreen(){
+  origin=null;
+  for(const r of ROWS) r._d=null;
+  if(pin){map.removeLayer(pin);pin=null;} if(ring){map.removeLayer(ring);ring=null;}
+  $('addr').value=''; F.sort='name'; $('sortsel').value='name';
+  render();
+}
 
-// Boot (after all declarations are initialized — avoids TDZ on markers/pin/etc.)
-if(!GJ || !GJ.features || !GJ.features.length){
-  document.getElementById('list').innerHTML =
-    '<div class="empty">No data loaded yet.<br><br>Run <code>python scripts/consolidate.py</code> after enrichment to generate <code>site/facilities_data.js</code>, then reload.</div>';
-}else{ init(); }
+/* ---------------- methodology modal ---------------- */
+function methodologyHTML(){
+  const n=ROWS.length, states=new Set(ROWS.map(r=>r.st)).size;
+  const viol=ROWS.filter(r=>r.nviol).length;
+  const fund=ROWS.reduce((s,r)=>s+Math.max(r.fund,r.nih),0);
+  const ver=ROWS.filter(r=>r.verified).length;
+  const usda=ROWS.filter(r=>r.cls!=='D').length;
+  return `
+  <p><b>Fido's Flame</b> is a public-records registry of U.S. animal research and testing facilities,
+  built for one practical question: <i>“what operates near this address?”</i> — the way flood maps and
+  sex-offender registries serve home buyers and renters. It is dataset-first: everything on the map is
+  exportable (CSV / GeoJSON) and every record cites its sources.</p>
+  <div class="warn"><b>The single most important caveat:</b> the Animal Welfare Act <b>exempts mice,
+  rats, and birds — about 95% of all laboratory animals.</b> USDA's registry therefore only shows the
+  floor. Facilities doing rodent-only work appear here only when found through NIH grants, OLAW
+  assurances, or other public records (marked “Discovered”). <b>Absence from this map is not evidence
+  of absence.</b></p>
+  <h3>What's in it right now</h3>
+  <table>
+    <tr><td>Facilities</td><td><b>${n.toLocaleString()}</b> across <b>${states}</b> states/jurisdictions</td></tr>
+    <tr><td>USDA-registered</td><td>${usda.toLocaleString()} (Class R research, F federal, V VA, G USDA-ARS)</td></tr>
+    <tr><td>Discovered (non-USDA)</td><td>${(n-usda).toLocaleString()} — mostly rodent-only labs the AWA exempts</td></tr>
+    <tr><td>Recent federal funding traced</td><td><b>${usd(fund)}</b> (NIH RePORTER FY2023–24 + agency records)</td></tr>
+    <tr><td>With recorded AWA violations</td><td>${viol.toLocaleString()} facilities</td></tr>
+    <tr><td>Adversarially verified</td><td>${ver.toLocaleString()} of ${n.toLocaleString()} (rest marked “verification pending”)</td></tr>
+    <tr><td>Generated</td><td>${esc(window.FF.generated)}</td></tr>
+  </table>
+  <h3>How each record is built</h3>
+  <ol>
+    <li><b>Backbone:</b> USDA APHIS active-registrant list (Classes R/F/V/G — research, federal, VA, ARS).
+        Breeders, dealers and exhibitors are excluded: this maps testing, not supply.</li>
+    <li><b>Discovery:</b> NIH RePORTER awards, OLAW assurances, AAALAC lists and public reporting surface
+        facilities the USDA registry misses.</li>
+    <li><b>Enrichment:</b> physical address, species &amp; methods, USDA inspection/violation history,
+        federal funding, corporate &amp; government ties — public records only, sources cited.</li>
+    <li><b>Adversarial verification:</b> an independent skeptical pass fact-checks each record —
+        addresses (several USDA “addresses” turned out to be mailbox stores), padded species lists,
+        unsourced claims. Unverifiable specifics get flagged, not published as fact.</li>
+    <li><b>Organization intel + scope check:</b> ownership, leadership (public officers by public title
+        only), funding scale, deals; a final reviewer enforces the scope rule below.</li>
+  </ol>
+  <h3>The scope line</h3>
+  <p>This dataset holds <b>facility- and organization-level public records only</b>. It deliberately
+  contains <b>no personal data about individual employees</b> — no home addresses, no personal contact
+  details, nothing beyond an officer's public professional title from official sources. That line is
+  what separates public-interest transparency from a harassment tool, and it is enforced by an
+  automated review layer on every record.</p>
+  <h3>Reading a record honestly</h3>
+  <ul>
+    <li><b>Confidence</b> (high/medium/low) reflects sourcing quality, not severity.</li>
+    <li><b>Addresses</b> are the best public street address; USDA lists sometimes give admin/mailing
+        addresses. Fine for neighborhood proximity — verify the building before high-stakes decisions.</li>
+    <li><b>“Unconfirmed as testing lab”</b> means the skeptical reviewer couldn't verify invasive
+        research from public records (some are sanctuaries or teaching programs kept for registry
+        completeness; some are real labs that publish little).</li>
+    <li><b>Violation counts</b> come from USDA inspection records; rodent-only facilities are not
+        USDA-inspected at all.</li>
+  </ul>
+  <h3>Primary sources (go straight to the records)</h3>
+  <ul>
+    <li><a href="https://aphis.my.site.com/PublicSearchTool/s/" target="_blank" rel="noopener noreferrer">USDA APHIS Public Search Tool</a> — inspections, annual reports, enforcement</li>
+    <li><a href="https://reporter.nih.gov/" target="_blank" rel="noopener noreferrer">NIH RePORTER</a> — every NIH grant, by organization</li>
+    <li><a href="https://arlo.riseforanimals.org/" target="_blank" rel="noopener noreferrer">Rise for Animals ARLO</a> — searchable USDA facility documents</li>
+    <li><a href="https://olaw.nih.gov/" target="_blank" rel="noopener noreferrer">NIH OLAW</a> — PHS animal-welfare assurances (covers AWA-exempt rodent labs)</li>
+    <li><a href="https://www.aaalac.org/" target="_blank" rel="noopener noreferrer">AAALAC</a> — voluntary accreditation directory</li>
+  </ul>
+  <h3>Take the data</h3>
+  <p>This is a dataset first, a map second. <a href="master_facilities.csv" download>Download the full
+  flat CSV</a> (every field, every state) and use it however serves the public interest.</p>
+  <p style="color:var(--muted);font-size:11.5px;margin-top:14px">Built with a state-by-state OSINT
+  pipeline (extract → enrich → adversarial verify → org-intel → scope check → geocode → consolidate).
+  Every excluded record is preserved with a written reason in the project's audit trail.</p>`;
+}
+
+/* ---------------- boot ---------------- */
+function init(){
+  ROWS=window.FF.facilities;
+  for(const r of ROWS){
+    r._t=normType(r.type);
+    r._sg=speciesGroups(r);
+    r._d=null;
+    r._hay=(r.name+' '+(r.city||'')+' '+(r.operator||'')+' '+(r.parent||'')+' '+r.id).toLowerCase();
+  }
+  try{const t=localStorage.getItem('ff_theme'); if(t) theme=t;}catch(e){}
+  setTheme(theme);
+
+  map=L.map('map',{zoomControl:true,preferCanvas:true,worldCopyJump:true}).setView([38.5,-96.5],5);
+  tiles=L.tileLayer(tileURL(),{attribution:'© OpenStreetMap · © CARTO · data: USDA APHIS, NIH RePORTER',
+    subdomains:'abcd',maxZoom:19}).addTo(map);
+  buildMarkers();
+
+  // stats
+  const fund=ROWS.reduce((s,r)=>s+Math.max(r.fund,r.nih),0);
+  const viol=ROWS.filter(r=>r.nviol).length;
+  const states=new Set(ROWS.map(r=>r.st)).size;
+  $('stats').innerHTML=
+    `<div class="stat"><b>${ROWS.length.toLocaleString()}</b><span>facilities</span></div>
+     <div class="stat"><b>${states}</b><span>states</span></div>
+     <div class="stat"><b>${viol}</b><span>w/ violations</span></div>
+     <div class="stat"><b>${usd(fund)}</b><span>federal $</span></div>`;
+
+  // filter options
+  const tcount={};
+  for(const r of ROWS) tcount[r._t]=(tcount[r._t]||0)+1;
+  $('ftype').innerHTML='<option value="">All facility types</option>'+
+    Object.keys(TYPES).filter(k=>tcount[k]).map(k=>`<option value="${k}">${TYPES[k].label} (${tcount[k]})</option>`).join('');
+  const scount={};
+  for(const r of ROWS) scount[r.st]=(scount[r.st]||0)+1;
+  $('fstate').innerHTML='<option value="">All states</option>'+
+    Object.keys(scount).sort().map(s=>`<option value="${s}">${s} (${scount[s]})</option>`).join('');
+  const gcount={};
+  for(const r of ROWS) for(const g of r._sg) gcount[g]=(gcount[g]||0)+1;
+  $('fspecies').innerHTML='<option value="">Any species</option>'+
+    Object.keys(SPECIES_GROUPS).filter(k=>gcount[k]).map(k=>`<option value="${k}">${SPECIES_GROUPS[k].label} (${gcount[k]})</option>`).join('');
+
+  // legend
+  $('legend').innerHTML=`<div class="lhead" id="lhead"><span>Legend</span><span>▾</span></div>
+    <div class="lbody">${Object.keys(TYPES).filter(k=>tcount[k]).map(k=>
+      `<div class="lrow"><span class="dot" style="background:${TYPES[k].color}"></span>${TYPES[k].label}</div>`).join('')}
+      <div class="lrow" style="margin-top:4px"><span class="dot" style="background:transparent;border:2px solid #f05252"></span>has AWA violations</div>
+      <div class="lrow"><span class="dot" style="width:12px;height:12px;background:var(--muted2)"></span>larger = more federal $</div></div>`;
+  $('lhead').onclick=()=>$('legend').classList.toggle('min');
+
+  // events
+  $('go').onclick=screen;
+  $('addr').addEventListener('keydown',e=>{if(e.key==='Enter')screen();});
+  $('radius').onchange=()=>{if(origin){drawOrigin();render();}};
+  $('q').addEventListener('input',()=>{F.q=$('q').value.trim();render();});
+  $('ftype').onchange=e=>{F.type=e.target.value;render();};
+  $('fstate').onchange=e=>{F.st=e.target.value;render();
+    if(F.st){const rs=ROWS.filter(r=>r.st===F.st);
+      if(rs.length){const b=L.latLngBounds(rs.map(r=>[r.lat,r.lon]));map.fitBounds(b,{padding:[40,40]});}}};
+  $('fspecies').onchange=e=>{F.species=e.target.value;render();};
+  $('fclass').onchange=e=>{F.cls=e.target.value;render();};
+  const tog=(id,key)=>{$(id).onclick=()=>{F[key]=!F[key];$(id).classList.toggle('on',F[key]);render();};};
+  tog('cviol','viol');tog('cfund','fund');tog('cver','ver');
+  $('clearall').onclick=()=>{
+    Object.assign(F,{q:'',type:'',st:'',species:'',cls:'',viol:false,fund:false,ver:false,sort:origin?'dist':'name'});
+    $('q').value='';$('ftype').value='';$('fstate').value='';$('fspecies').value='';$('fclass').value='';
+    document.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));
+    $('sortsel').value=F.sort;render();};
+  $('sortsel').onchange=e=>{F.sort=e.target.value;render();};
+  $('dback').onclick=closeDetail;
+  $('themebtn').onclick=()=>setTheme(theme==='dark'?'light':'dark');
+  const openAbout=e=>{e&&e.preventDefault();$('mbody').innerHTML=methodologyHTML();$('modalback').classList.add('open');};
+  $('aboutbtn').onclick=openAbout;
+  $('aboutlink').onclick=openAbout;
+  $('mclose').onclick=()=>$('modalback').classList.remove('open');
+  $('modalback').onclick=e=>{if(e.target.id==='modalback')$('modalback').classList.remove('open');};
+  document.addEventListener('keydown',e=>{
+    if(e.key==='Escape'){$('modalback').classList.remove('open');if($('detail').classList.contains('open'))closeDetail();}});
+
+  render();
+
+  // permalink restore
+  const mfa=location.hash.match(/#f=([^&]+)/);
+  if(mfa){const id=decodeURIComponent(mfa[1]);
+    if(ROWS.some(r=>r.id===id)){openDetail(id,true);}}
+}
+
+/* Boot at the very end, after every declaration is initialized (TDZ lesson). */
+if(!window.FF||!window.FF.facilities||!window.FF.facilities.length){
+  document.getElementById('list').innerHTML=
+    '<div class="empty">No data loaded.<br><br>Run <code>python scripts/consolidate.py</code> to generate <code>site/facilities_data.js</code>, then reload.</div>';
+}else{
+  init();
+}
 </script>
 </body>
 </html>
